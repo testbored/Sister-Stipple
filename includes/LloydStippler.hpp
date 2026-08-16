@@ -16,5 +16,7 @@ class Stippler{
         void createMapDensity(const std::string& path);
         int findNearestPoint(int x, int y);
         void calculateNewCentroid();
+        void calculateNewOMP();
         void runLloyd(const std::string& path);
+        void runLloydOMP(const std::string& path);
 };
