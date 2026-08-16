@@ -6,13 +6,13 @@
 
 cv::Mat getImageGrayscale(const std::string& path);
 
-double getDensity(uchar input);
+float getDensity(uchar input);
 
-cv::Mat assignDensity(cv::Mat input);
+cv::Mat assignDensity(const cv::Mat& input);
 
-std::string resolveInputpath();
+std::string resolveInputPath();
 
-bool validateInputPath();
+bool validateInputPath(const std::string& path);
 
 
 

@@ -1,8 +1,14 @@
 #include "../includes/LloydStippler.hpp"
 #include <cmath>
 #include <random>
+#include <stdexcept>
+#include <vector>
 
 Stippler::Stippler(int count, int iter, int eps){
+    if (count <= 0 || iter < 0 || eps < 0) {
+        throw std::invalid_argument("Jumlah titik harus positif; iterasi dan epsilon tidak boleh negatif.");
+    }
+
     this->pointCount = count;
     this->iterations = iter;
     this->epsilon = eps;
@@ -28,16 +34,20 @@ int Stippler::findNearestPoint(int x, int y){
 }
 
 void Stippler::calculateNewCentroid(){
+    if (pointX.size() != static_cast<std::size_t>(pointCount) ||
+        pointY.size() != static_cast<std::size_t>(pointCount)) {
+        throw std::logic_error("Titik belum diinisialisasi dengan benar.");
+    }
 
-    float sumX[pointCount];
-    float sumY[pointCount];
-    float sumWeight[pointCount];
+    std::vector<double> sumX(pointCount, 0.0);
+    std::vector<double> sumY(pointCount, 0.0);
+    std::vector<double> sumWeight(pointCount, 0.0);
     
     for(int y = 0; y < density.rows; ++y){
         for(int x = 0; x < density.cols; ++x){
             int point = findNearestPoint(x, y);
             
-            float weight = density.at<float>(y, x);
+            const float weight = density.at<float>(y, x);
             sumX[point] += x * weight;
             sumY[point] += y * weight;
             sumWeight[point] += weight;
@@ -45,9 +55,9 @@ void Stippler::calculateNewCentroid(){
     }
 
     for(int i = 0; i < pointCount; i++){
-        if(sumWeight[i] > 0.0f){
-            pointX[i] = sumX[i] / sumWeight[i];
-            pointY[i] = sumY[i] / sumWeight[i];
+        if(sumWeight[i] > 0.0){
+            pointX[i] = static_cast<float>(sumX[i] / sumWeight[i]);
+            pointY[i] = static_cast<float>(sumY[i] / sumWeight[i]);
         }
     }
 }
@@ -55,10 +65,15 @@ void Stippler::calculateNewCentroid(){
 void Stippler::runLloyd(const std::string& path){
     createMapDensity(path);
 
+    pointX.clear();
+    pointY.clear();
+    pointX.reserve(pointCount);
+    pointY.reserve(pointCount);
+
     std::mt19937 rng(std::random_device{}());
     
-    std::uniform_real_distribution<float> randX(0, density.cols);
-    std::uniform_real_distribution<float> randY(0, density.rows);
+    std::uniform_real_distribution<float> randX(0.0f, static_cast<float>(density.cols - 1));
+    std::uniform_real_distribution<float> randY(0.0f, static_cast<float>(density.rows - 1));
 
     for(int i = 0; i < pointCount; i++){
         pointX.emplace_back(randX(rng));
