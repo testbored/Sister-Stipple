@@ -8,9 +8,15 @@ Program C++17 untuk menghasilkan gambar stippling dari citra masukan menggunakan
 
 Selain output PNG, program dapat membuat GIF progres iterasi dan menyediakan GUI berbasis OpenCV.
 
-## Konsep Stippling
+## Jurnal Progress
+Hal pertama yang saya lakukan adalah mencari tahu apa itu . Selama proses pencarian tersebut, saya menemukan paper berikut Weighted Voronoi Stippling, yang menjelaskan penggunaan weighted centroidal Voronoi diagram untuk melakukan stippling. Saya mencari dari artikel hingga video youtube sampai menemukan penjelasan yang tepat. 
 
-Stippling merepresentasikan gambar menggunakan kumpulan titik. Area yang gelap memiliki titik lebih rapat, sedangkan area terang memiliki titik lebih jarang.
+https://dahtah.github.io/imager/stippling.html
+https://mfkasim1.github.io/2016/12/06/stippling-pictures-with-lloyds-algorithm/
+
+Kedua sumber diatas memberikan saya pemahaman paling besar diantara ketiganya
+
+Ide dasar weighhed centered voronoi/lloyd algorithm adalah dengan memperlakukan setiap titik stipple sebagai site Voronoi. Setiap pixel akan diberikan kepada titik terdekat, setiap pixel pada titik terdekat akan dihitung pusat dari seluruh titik dan diambil centroid dari seluruh pixel pada titik tersebut. Titik akan dipindahkan lokasinya ke centroid dan mengulang hal tersebut hingga mencapai konvergens atau jumlah iterasi berakhir
 
 Program mengubah citra grayscale menjadi *density map*. Bobot setiap pixel dihitung dari tingkat kegelapan, lalu diperkaya dengan informasi tepi (Sobel):
 
@@ -204,16 +210,7 @@ cmake -S . -B build -DSISTER_STIPPLE_CUDA_ARCHITECTURES=86
 Benchmark ketiga backend:
 
 ```bash
-./build/sister-stipple \
-  --backend all \
-  --input assets/gambar.png \
-  --points 5000 \
-  --iterations 150 \
-  --epsilon 0.05 \
-  --gamma 1.8 \
-  --edge-weight 0.3 \
-  --render-scale 3 \
-  --output output/hasil.png
+./build/sister-stipple --backend all --input assets/gambar.png --points 5000 --iterations 150 --epsilon 0.05 --gamma 1.3 --edge-weight 0.5 --render-scale 3 --output output/hasil.png
 ```
 
 Menjalankan CUDA saja:
@@ -252,28 +249,29 @@ Isi tabel berikut setelah menjalankan benchmark pada input, parameter, dan seed 
 
 | Item | Nilai |
 |---|---|
-| CPU | |
-| GPU | |
-| RAM | |
-| Resolusi gambar | |
-| Jumlah titik | |
-| Maksimum iterasi | |
-| Epsilon | |
-| Gamma | |
-| Edge weight | |
-| Seed | |
-| Jumlah thread OpenMP | |
-
+| Jumlah titik | 1000 |
+| Maksimum iterasi |10|
+| Epsilon | 0.5 |
+| Gamma | 1.5 |
+| Edge weight | 0.5 |
+| Seed | 42 |
 **Hasil benchmark**
 
 | Backend | Waktu eksekusi (ms) | Iterasi aktual | Speedup terhadap serial | Konvergen | Catatan |
 |---|---:|---:|---:|---|---|
-| Serial | | | 1.00x | | |
-| OpenMP | | | | | |
-| CUDA | | | | | |
+| Serial | 174251.222 | 10  | 1.00x | | tidak |
+| OpenMP | 17333.760 |  10  | 1.00x | | tidak |
+| CUDA | 509.646 | 10  | 1.00x | | tidak |
 
 Speedup dihitung dengan rumus:
 
 ```text
 speedup = waktu serial / waktu backend
 ```
+
+## Kendala yang dialami
+
+1. Mereset buffer `sumX`, `sumY`, dan `sumWeight`.
+2. Menjalankan satu thread untuk setiap pixel untuk mencari titik terdekat.
+3. Mengakumulasi centroid dengan `atomicAdd` karena banyak pixel dapat mengubah region yang sama.
+4. Menjalankan kernel kedua untuk memperbarui koordinat centroid.
