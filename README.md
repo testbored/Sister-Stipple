@@ -8,6 +8,14 @@ Program C++17 untuk menghasilkan gambar stippling dari citra masukan menggunakan
 
 Selain output PNG, program dapat membuat GIF progres iterasi dan menyediakan GUI berbasis OpenCV.
 
+## Contoh Hasil
+
+Contoh berikut menggunakan gambar sumber `assets/an-iq-too-high.png` dan menghasilkan stippling pada `output/an-iq-too-high-stippled.png`.
+
+| Gambar sumber | Hasil stippling |
+|---|---|
+| ![Gambar sumber](assets/an-iq-too-high.png) | ![Hasil stippling](output/an-iq-too-high-stippled.png) |
+
 ## Jurnal Progress
 Hal pertama yang saya lakukan adalah mencari tahu apa itu . Selama proses pencarian tersebut, saya menemukan paper berikut Weighted Voronoi Stippling, yang menjelaskan penggunaan weighted centroidal Voronoi diagram untuk melakukan stippling. Saya mencari dari artikel hingga video youtube sampai menemukan penjelasan yang tepat. 
 
@@ -255,6 +263,7 @@ Isi tabel berikut setelah menjalankan benchmark pada input, parameter, dan seed 
 | Gamma | 1.5 |
 | Edge weight | 0.5 |
 | Seed | 42 |
+
 **Hasil benchmark**
 
 | Backend | Waktu eksekusi (ms) | Iterasi aktual | Speedup terhadap serial | Konvergen | Catatan |
@@ -271,7 +280,8 @@ speedup = waktu serial / waktu backend
 
 ## Kendala yang dialami
 
-1. Mereset buffer `sumX`, `sumY`, dan `sumWeight`.
-2. Menjalankan satu thread untuk setiap pixel untuk mencari titik terdekat.
-3. Mengakumulasi centroid dengan `atomicAdd` karena banyak pixel dapat mengubah region yang sama.
-4. Menjalankan kernel kedua untuk memperbarui koordinat centroid.
+1. Saat Installasi CUDA toolkit, toolkit tidak langsung ada PATH wsl sehingga harus menambahkan secara manual
+2. VSCode yang tidak bisa mendetect libary OpenCV karena config.json sehingga perlu melakukan perbaikan
+
+**Sampel**
+
