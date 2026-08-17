@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.24)
 
 project(SisterStipple LANGUAGES CXX)
 
@@ -12,6 +12,10 @@ find_package(OpenCV REQUIRED)
 find_package(OpenMP REQUIRED)
 
 option(SISTER_STIPPLE_ENABLE_CUDA "Build the CUDA Lloyd backend when CUDA is available" ON)
+# "native" memilih compute capability GPU yang dipakai saat konfigurasi.
+# Ganti, misalnya, menjadi 86 untuk RTX 30xx bila melakukan cross-build.
+set(SISTER_STIPPLE_CUDA_ARCHITECTURES "native" CACHE STRING
+    "CUDA architectures: native, all-major, atau daftar compute capability (mis. 86)")
 include(CheckLanguage)
 if(SISTER_STIPPLE_ENABLE_CUDA)
     # CUDA di WSL sering terpasang di /usr/local/cuda tetapi belum ada di PATH.
@@ -40,7 +44,11 @@ if(SISTER_STIPPLE_ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
     find_package(CUDAToolkit REQUIRED)
     target_sources(sister_stipple PRIVATE src/CudaLloydBackend.cu)
     target_link_libraries(sister_stipple PRIVATE CUDA::cudart)
-    set_target_properties(sister_stipple PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON)
+    set_target_properties(sister_stipple PROPERTIES
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+        CUDA_ARCHITECTURES "${SISTER_STIPPLE_CUDA_ARCHITECTURES}"
+    )
     target_compile_definitions(sister_stipple PUBLIC SISTER_STIPPLE_HAS_CUDA=1)
 else()
     target_sources(sister_stipple PRIVATE src/CudaLloydBackendStub.cpp)

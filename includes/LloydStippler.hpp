@@ -15,6 +15,8 @@ class Stippler{
         int pointCount;
         int iterations;
         float epsilon;
+        float densityGamma;
+        float edgeWeight;
         std::vector<float> pointX;
         std::vector<float> pointY;
         cv::Mat density;
@@ -22,7 +24,7 @@ class Stippler{
         void initializePoints(std::uint32_t seed);
     
     public:
-        Stippler(int count, int iter, float eps);
+        Stippler(int count, int iter, float eps, float gamma = 1.6f, float edgeWeight = 0.25f);
         void createMapDensity(const std::string& path);
         int findNearestPoint(int x, int y);
         float calculateNewCentroid();
@@ -34,6 +36,8 @@ class Stippler{
                                         const std::string& gifPath,
                                         int delayCentiseconds = 8,
                                         std::uint32_t seed = 42);
-        cv::Mat renderStippleImage(int pointRadius = 1) const;
-        void saveStippleImage(const std::string& outputPath, int pointRadius = 1) const;
+        cv::Mat renderStippleImage(int pointRadius = 1, int supersampleScale = 3) const;
+        void saveStippleImage(const std::string& outputPath,
+                              int pointRadius = 1,
+                              int supersampleScale = 3) const;
 };

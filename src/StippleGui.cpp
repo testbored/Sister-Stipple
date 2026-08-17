@@ -13,7 +13,7 @@
 namespace {
 
 constexpr int windowWidth = 900;
-constexpr int windowHeight = 500;
+constexpr int windowHeight = 640;
 constexpr int firstFieldY = 85;
 constexpr int fieldHeight = 38;
 constexpr int fieldGap = 52;
@@ -23,10 +23,10 @@ constexpr int fieldWidth = 620;
 struct GuiState {
     std::vector<std::string> labels = {
         "Path input", "Path output PNG", "Path output GIF (opsional)",
-        "Jumlah titik", "Maksimal iterasi", "Epsilon"
+        "Jumlah titik", "Maksimal iterasi", "Epsilon", "Gamma density", "Bobot edge"
     };
     std::vector<std::string> values = {
-        "", "stipple.png", "", "1000", "50", "0.1"
+        "", "stipple.png", "", "1000", "50", "0.1", "1.6", "0.25"
     };
     int activeField = 0;
     bool runRequested = false;
@@ -53,11 +53,11 @@ void drawGui(const GuiState& state) {
                     cv::FONT_HERSHEY_SIMPLEX, 0.55, cv::Scalar(245, 245, 245), 1);
     }
 
-    const cv::Rect runButton(650, 410, 200, 48);
+    const cv::Rect runButton(650, 540, 200, 48);
     cv::rectangle(canvas, runButton, cv::Scalar(70, 160, 80), cv::FILLED);
-    cv::putText(canvas, "Jalankan", cv::Point(700, 441), cv::FONT_HERSHEY_SIMPLEX,
+    cv::putText(canvas, "Jalankan", cv::Point(700, 571), cv::FONT_HERSHEY_SIMPLEX,
                 0.7, cv::Scalar(255, 255, 255), 2);
-    cv::putText(canvas, state.status, cv::Point(30, 485), cv::FONT_HERSHEY_SIMPLEX,
+    cv::putText(canvas, state.status, cv::Point(30, 620), cv::FONT_HERSHEY_SIMPLEX,
                 0.45, cv::Scalar(190, 220, 190), 1);
     cv::imshow("Sister Stipple GUI", canvas);
 }
@@ -73,7 +73,7 @@ void mouseCallback(int event, int x, int y, int, void* userdata) {
             return;
         }
     }
-    if (cv::Rect(650, 410, 200, 48).contains(cv::Point(x, y))) {
+    if (cv::Rect(650, 540, 200, 48).contains(cv::Point(x, y))) {
         state.runRequested = true;
     }
 }
@@ -83,18 +83,21 @@ void execute(GuiState& state) {
         const int points = std::stoi(state.values[3]);
         const int iterations = std::stoi(state.values[4]);
         const float epsilon = std::stof(state.values[5]);
-        if (state.values[0].empty() || state.values[1].empty() || points <= 0 || iterations < 0 || epsilon < 0.0f) {
+        const float gamma = std::stof(state.values[6]);
+        const float edgeWeight = std::stof(state.values[7]);
+        if (state.values[0].empty() || state.values[1].empty() || points <= 0 || iterations < 0 ||
+            epsilon < 0.0f || gamma <= 0.0f || edgeWeight < 0.0f) {
             throw std::invalid_argument("Isi semua parameter wajib dengan nilai valid.");
         }
 
         state.status = "Memproses OpenMP...";
         drawGui(state);
-        Stippler stippler(points, iterations, epsilon);
+        Stippler stippler(points, iterations, epsilon, gamma, edgeWeight);
         const RunStatistics result = stippler.runLloydOMP(state.values[0]);
         stippler.saveStippleImage(state.values[1]);
 
         if (!state.values[2].empty()) {
-            Stippler animation(points, iterations, epsilon);
+            Stippler animation(points, iterations, epsilon, gamma, edgeWeight);
             animation.createProgressGif(state.values[0], state.values[2]);
         }
 

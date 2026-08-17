@@ -17,14 +17,19 @@ struct Options {
     int pointCount = 0;
     int iterations = 0;
     float epsilon = 0.0f;
+    float gamma = 1.6f;
+    float edgeWeight = 0.25f;
+    int renderScale = 3;
     std::uint32_t seed = 42;
     std::string gifPath;
+    std::string backend = "all";
 };
 
 void printUsage(const char* executable) {
     std::cout << "Usage:\n  " << executable
               << " --input <image> --points <count> --iterations <count> --epsilon <value> --output <image>"
-                 " [--gif <animation.gif>] [--seed <number>]\n"
+                 " [--backend all|serial|omp|cuda] [--gif <animation.gif>] [--seed <number>]\n"
+                 " [--gamma <value>] [--edge-weight <value>] [--render-scale <integer>]\n"
                  "  " << executable << " --gui\n";
 }
 
@@ -51,17 +56,28 @@ Options parseArguments(int argc, char* argv[]) {
             options.iterations = std::stoi(value);
         } else if (flag == "--epsilon") {
             options.epsilon = std::stof(value);
+        } else if (flag == "--gamma") {
+            options.gamma = std::stof(value);
+        } else if (flag == "--edge-weight") {
+            options.edgeWeight = std::stof(value);
+        } else if (flag == "--render-scale") {
+            options.renderScale = std::stoi(value);
         } else if (flag == "--seed") {
             options.seed = static_cast<std::uint32_t>(std::stoul(value));
         } else if (flag == "--gif") {
             options.gifPath = value;
+        } else if (flag == "--backend") {
+            options.backend = value;
         } else {
             throw std::invalid_argument("Argumen tidak dikenal: " + flag);
         }
     }
 
     if (options.inputPath.empty() || options.outputPath.empty() || options.pointCount <= 0 ||
-        options.iterations < 0 || options.epsilon < 0.0f) {
+        options.iterations < 0 || options.epsilon < 0.0f || options.gamma <= 0.0f ||
+        options.edgeWeight < 0.0f || options.renderScale <= 0 ||
+        (options.backend != "all" && options.backend != "serial" &&
+         options.backend != "omp" && options.backend != "cuda")) {
         throw std::invalid_argument("--input, --output, --points, --iterations, dan --epsilon harus valid.");
     }
     return options;
@@ -85,13 +101,43 @@ int main(int argc, char* argv[]) {
         }
         const Options options = parseArguments(argc, argv);
 
-        Stippler serial(options.pointCount, options.iterations, options.epsilon);
+        if (options.backend != "all") {
+            Stippler stippler(options.pointCount, options.iterations, options.epsilon,
+                              options.gamma, options.edgeWeight);
+            RunStatistics statistics;
+            if (options.backend == "serial") {
+                statistics = stippler.runLloyd(options.inputPath, options.seed);
+            } else if (options.backend == "omp") {
+                statistics = stippler.runLloydOMP(options.inputPath, options.seed);
+            } else {
+                statistics = stippler.runLloydCUDA(options.inputPath, options.seed);
+            }
+            stippler.saveStippleImage(options.outputPath, 1, options.renderScale);
+
+            if (!options.gifPath.empty()) {
+                Stippler animation(options.pointCount, options.iterations, options.epsilon,
+                                   options.gamma, options.edgeWeight);
+                animation.createProgressGif(options.inputPath, options.gifPath, 8, options.seed);
+            }
+
+            std::cout << "Backend: " << options.backend << "\n"
+                      << "Waktu: " << std::fixed << std::setprecision(3) << statistics.milliseconds << " ms\n"
+                      << "Iterasi: " << statistics.iterationsExecuted << "\n"
+                      << "Konvergen: " << (statistics.converged ? "ya" : "tidak") << "\n"
+                      << "Output: " << options.outputPath << '\n';
+            return 0;
+        }
+
+        Stippler serial(options.pointCount, options.iterations, options.epsilon,
+                         options.gamma, options.edgeWeight);
         const RunStatistics serialStatistics = serial.runLloyd(options.inputPath, options.seed);
 
-        Stippler omp(options.pointCount, options.iterations, options.epsilon);
+        Stippler omp(options.pointCount, options.iterations, options.epsilon,
+                      options.gamma, options.edgeWeight);
         const RunStatistics ompStatistics = omp.runLloydOMP(options.inputPath, options.seed);
 
-        Stippler cuda(options.pointCount, options.iterations, options.epsilon);
+        Stippler cuda(options.pointCount, options.iterations, options.epsilon,
+                      options.gamma, options.edgeWeight);
         bool cudaAvailable = true;
         RunStatistics cudaStatistics;
         std::string cudaError;
@@ -103,13 +149,14 @@ int main(int argc, char* argv[]) {
         }
 
         if (cudaAvailable) {
-            cuda.saveStippleImage(options.outputPath);
+            cuda.saveStippleImage(options.outputPath, 1, options.renderScale);
         } else {
-            omp.saveStippleImage(options.outputPath);
+            omp.saveStippleImage(options.outputPath, 1, options.renderScale);
         }
 
         if (!options.gifPath.empty()) {
-            Stippler animation(options.pointCount, options.iterations, options.epsilon);
+            Stippler animation(options.pointCount, options.iterations, options.epsilon,
+                               options.gamma, options.edgeWeight);
             const RunStatistics animationStatistics = animation.createProgressGif(
                 options.inputPath, options.gifPath, 8, options.seed);
             std::cout << "GIF: " << options.gifPath << " (" << animationStatistics.iterationsExecuted

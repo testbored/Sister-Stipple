@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iomanip>
+#include <numeric>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -39,18 +40,20 @@ void makeGif(const std::filesystem::path& frameDirectory,
 
 } // namespace
 
-Stippler::Stippler(int count, int iter, float eps){
-    if (count <= 0 || iter < 0 || eps < 0) {
-        throw std::invalid_argument("Jumlah titik harus positif; iterasi dan epsilon tidak boleh negatif.");
+Stippler::Stippler(int count, int iter, float eps, float gamma, float edgeWeight){
+    if (count <= 0 || iter < 0 || eps < 0 || gamma <= 0.0f || edgeWeight < 0.0f) {
+        throw std::invalid_argument("Jumlah titik harus positif; iterasi, epsilon, gamma, dan edge weight harus valid.");
     }
 
     this->pointCount = count;
     this->iterations = iter;
     this->epsilon = eps;
+    this->densityGamma = gamma;
+    this->edgeWeight = edgeWeight;
 }
 
 void Stippler::createMapDensity(const std::string& path){
-    this->density = assignDensity(getImageGrayscale(path));
+    this->density = assignDensity(getImageGrayscale(path), densityGamma, edgeWeight);
 }
 
 void Stippler::initializePoints(std::uint32_t seed) {
@@ -60,11 +63,30 @@ void Stippler::initializePoints(std::uint32_t seed) {
     pointY.reserve(pointCount);
 
     std::mt19937 rng(seed);
+    std::vector<float> weights;
+    weights.reserve(static_cast<std::size_t>(density.rows) * density.cols);
+    for (int y = 0; y < density.rows; ++y) {
+        for (int x = 0; x < density.cols; ++x) {
+            weights.push_back(density.at<float>(y, x));
+        }
+    }
+
+    const float totalWeight = std::accumulate(weights.begin(), weights.end(), 0.0f);
+    std::uniform_real_distribution<float> jitter(-0.5f, 0.5f);
     std::uniform_real_distribution<float> randX(0.0f, static_cast<float>(density.cols - 1));
     std::uniform_real_distribution<float> randY(0.0f, static_cast<float>(density.rows - 1));
+    std::discrete_distribution<int> weightedPixel(weights.begin(), weights.end());
     for (int i = 0; i < pointCount; ++i) {
-        pointX.emplace_back(randX(rng));
-        pointY.emplace_back(randY(rng));
+        if (totalWeight > 0.0f) {
+            const int pixelIndex = weightedPixel(rng);
+            const int x = pixelIndex % density.cols;
+            const int y = pixelIndex / density.cols;
+            pointX.emplace_back(std::clamp(x + jitter(rng), 0.0f, static_cast<float>(density.cols - 1)));
+            pointY.emplace_back(std::clamp(y + jitter(rng), 0.0f, static_cast<float>(density.rows - 1)));
+        } else {
+            pointX.emplace_back(randX(rng));
+            pointY.emplace_back(randY(rng));
+        }
     }
 }
 
@@ -234,7 +256,9 @@ RunStatistics Stippler::runLloydCUDA(const std::string& path, std::uint32_t seed
     return statistics;
 }
 
-void Stippler::saveStippleImage(const std::string& outputPath, int pointRadius) const {
+void Stippler::saveStippleImage(const std::string& outputPath,
+                                int pointRadius,
+                                int supersampleScale) const {
     if (density.empty() || pointX.size() != pointY.size()) {
         throw std::logic_error("Tidak ada hasil stippling untuk disimpan.");
     }
@@ -251,27 +275,36 @@ void Stippler::saveStippleImage(const std::string& outputPath, int pointRadius) 
         }
     }
 
-    const cv::Mat output = renderStippleImage(pointRadius);
+    const cv::Mat output = renderStippleImage(pointRadius, supersampleScale);
     if (!cv::imwrite(outputPath, output)) {
         throw std::runtime_error("Gagal menyimpan gambar output: " + outputPath);
     }
 }
 
-cv::Mat Stippler::renderStippleImage(int pointRadius) const {
+cv::Mat Stippler::renderStippleImage(int pointRadius, int supersampleScale) const {
     if (density.empty() || pointX.size() != pointY.size()) {
         throw std::logic_error("Tidak ada hasil stippling untuk dirender.");
     }
-    if (pointRadius <= 0) {
-        throw std::invalid_argument("Radius titik harus positif.");
+    if (pointRadius <= 0 || supersampleScale <= 0) {
+        throw std::invalid_argument("Radius titik dan supersample scale harus positif.");
     }
 
-    cv::Mat output(density.rows, density.cols, CV_8UC1, cv::Scalar(255));
+    cv::Mat output(density.rows * supersampleScale, density.cols * supersampleScale,
+                   CV_8UC1, cv::Scalar(255));
     for (std::size_t i = 0; i < pointX.size(); ++i) {
-        const int x = std::clamp(static_cast<int>(std::lround(pointX[i])), 0, density.cols - 1);
-        const int y = std::clamp(static_cast<int>(std::lround(pointY[i])), 0, density.rows - 1);
-        cv::circle(output, cv::Point(x, y), pointRadius, cv::Scalar(0), cv::FILLED, cv::LINE_AA);
+        const int x = std::clamp(static_cast<int>(std::lround(pointX[i] * supersampleScale)),
+                                 0, output.cols - 1);
+        const int y = std::clamp(static_cast<int>(std::lround(pointY[i] * supersampleScale)),
+                                 0, output.rows - 1);
+        cv::circle(output, cv::Point(x, y), pointRadius * supersampleScale,
+                   cv::Scalar(0), cv::FILLED, cv::LINE_AA);
     }
-    return output;
+    if (supersampleScale == 1) {
+        return output;
+    }
+    cv::Mat downsampled;
+    cv::resize(output, downsampled, density.size(), 0.0, 0.0, cv::INTER_AREA);
+    return downsampled;
 }
 
 RunStatistics Stippler::createProgressGif(const std::string& path,
@@ -296,7 +329,7 @@ RunStatistics Stippler::createProgressGif(const std::string& path,
     const auto saveFrame = [this, &frameDirectory](int frameNumber) {
         std::ostringstream name;
         name << "frame_" << std::setw(6) << std::setfill('0') << frameNumber << ".png";
-        if (!cv::imwrite((frameDirectory / name.str()).string(), renderStippleImage())) {
+        if (!cv::imwrite((frameDirectory / name.str()).string(), renderStippleImage(1, 1))) {
             throw std::runtime_error("Gagal menyimpan frame GIF.");
         }
     };

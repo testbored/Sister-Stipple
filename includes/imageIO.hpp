@@ -6,9 +6,7 @@
 
 cv::Mat getImageGrayscale(const std::string& path);
 
-float getDensity(uchar input);
-
-cv::Mat assignDensity(const cv::Mat& input);
+cv::Mat assignDensity(const cv::Mat& input, float gamma, float edgeWeight);
 
 std::string resolveInputPath();
 
