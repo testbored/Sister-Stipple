@@ -1,6 +1,6 @@
-#include "StippleGui.hpp"
+#include "../includes/StippleGui.hpp"
 
-#include "LloydStippler.hpp"
+#include "../includes/LloydStippler.hpp"
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
